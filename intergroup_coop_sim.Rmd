@@ -384,7 +384,7 @@ test_sim_results = simulation(name = "test_sim",
 PLOTS
 ```{r}
 
-ggplot(sim_results, aes(x = Round)) +
+ggplot(test_sim_results, aes(x = Round)) +
   geom_point(aes(y=Group_1_hap), color=1, size = 0.1) +
   geom_point(aes(y=Group_2_hap), color=2, size = 0.1) +
   geom_point(aes(y=Group_3_hap), color=3, size = 0.1) +
@@ -394,117 +394,6 @@ ggplot(sim_results, aes(x = Round)) +
   #geom_line(aes(y=Trade), size = 0.5, color = "gray") +
   facet_wrap(~Simulation, ncol = 3)
 
-
-ggplot(sim0, aes(x = Round)) +
-  geom_point(aes(y=Group_1_hap), color=1, size = 0.1) +
-  geom_point(aes(y=Group_2_hap), color=2, size = 0.1) +
-  geom_point(aes(y=Group_3_hap), color=3, size = 0.1) +
-  geom_point(aes(y=Group_4_hap), color=4, size = 0.1) +
-  facet_wrap(~Simulation, ncol = 3) + 
-  ggtitle("sd gather 0")
-
-ggplot(sim05, aes(x = Round)) +
-  geom_point(aes(y=Group_1_hap), color=1, size = 0.1) +
-  geom_point(aes(y=Group_2_hap), color=2, size = 0.1) +
-  geom_point(aes(y=Group_3_hap), color=3, size = 0.1) +
-  geom_point(aes(y=Group_4_hap), color=4, size = 0.1) +
-  facet_wrap(~Simulation, ncol = 3) + 
-  ggtitle("sd gather 0.5")
-
-ggplot(sim1, aes(x = Round)) +
-  geom_point(aes(y=Group_1_hap), color=1, size = 0.1) +
-  geom_point(aes(y=Group_2_hap), color=2, size = 0.1) +
-  geom_point(aes(y=Group_3_hap), color=3, size = 0.1) +
-  geom_point(aes(y=Group_4_hap), color=4, size = 0.1) +
-  facet_wrap(~Simulation, ncol = 3) + 
-  ggtitle("sd gather 1")
-
-ggplot(sim15, aes(x = Round)) +
-  geom_point(aes(y=Group_1_hap), color=1, size = 0.1) +
-  geom_point(aes(y=Group_2_hap), color=2, size = 0.1) +
-  geom_point(aes(y=Group_3_hap), color=3, size = 0.1) +
-  geom_point(aes(y=Group_4_hap), color=4, size = 0.1) +
-  facet_wrap(~Simulation, ncol = 3) + 
-  ggtitle("sd gather 1.5")
-
-ggplot(sim0, aes(x=Round)) +
-  geom_smooth(aes(y = Outgroup_Trade), color="1") +
-  geom_smooth(aes(y = sim05$Outgroup_Trade), color="2") +
-  geom_smooth(aes(y = sim1$Outgroup_Trade), color="3") +
-  geom_smooth(aes(y = sim15$Outgroup_Trade), color="4")
-
-sim0$Ingroup_Trade = sim0$Trade - sim0$Outgroup_Trade
-sim05$Ingroup_Trade = sim05$Trade - sim05$Outgroup_Trade
-sim1$Ingroup_Trade = sim1$Trade - sim1$Outgroup_Trade
-sim15$Ingroup_Trade = sim15$Trade - sim15$Outgroup_Trade
-
-ggplot(sim0, aes(x=Round)) +
-  geom_smooth(aes(y = Ingroup_Trade), color="1") +
-  geom_smooth(aes(y = sim05$Ingroup_Trade), color="2") +
-  geom_smooth(aes(y = sim1$Ingroup_Trade), color="3") +
-  geom_smooth(aes(y = sim15$Ingroup_Trade), color="4")
-
-ggplot(sim0, aes(x=Round)) +
-  geom_smooth(aes(y = Trade), color="1") +
-  geom_smooth(aes(y = sim05$Trade), color="2") +
-  geom_smooth(aes(y = sim1$Trade), color="3") +
-  geom_smooth(aes(y = sim15$Trade), color="4")
-
-ggplot(sim0, aes(x=Round)) +
-  geom_smooth(aes(y = Fail_Trade), color="1") +
-  geom_smooth(aes(y = sim05$Fail_Trade), color="2") +
-  geom_smooth(aes(y = sim1$Fail_Trade), color="3") +
-  geom_smooth(aes(y = sim15$Fail_Trade), color="4")
-
-ggplot(sim0, aes(x=Round)) +
-  geom_smooth(aes(y = No_Trade), color="1") +
-  geom_smooth(aes(y = sim05$No_Trade), color="2") +
-  geom_smooth(aes(y = sim1$No_Trade), color="3") +
-  geom_smooth(aes(y = sim15$No_Trade), color="4")
-
-
-ggplot(sim0, aes(x = Round)) +
-  geom_smooth(aes(y=Group_1_hap), color=1, size = 0.1) +
-  geom_smooth(aes(y=Group_2_hap), color=2, size = 0.1) +
-  geom_smooth(aes(y=Group_3_hap), color=3, size = 0.1) +
-  geom_smooth(aes(y=Group_4_hap), color=4, size = 0.1) +
-  facet_wrap(~Simulation, ncol = 3) + 
-  ggtitle("sd gather 05")
-
-
-
-
-ggplot(sim0_s05, aes(x = Round)) +
-  geom_smooth(aes(y=Group_1_hap), color=1, size = 0.1) +
-  geom_smooth(aes(y=Group_2_hap), color=2, size = 0.1) +
-  geom_smooth(aes(y=Group_3_hap), color=3, size = 0.1) +
-  geom_smooth(aes(y=Group_4_hap), color=4, size = 0.1) +
-  facet_wrap(~Simulation, ncol = 3) + 
-  ggtitle("sd gather 0")
-
-ggplot(sim0_s05, aes(x = Round)) +
-  geom_point(aes(y=Group_1_hap), color=1, size = 0.1) +
-  geom_point(aes(y=Group_2_hap), color=2, size = 0.1) +
-  geom_point(aes(y=Group_3_hap), color=3, size = 0.1) +
-  geom_point(aes(y=Group_4_hap), color=4, size = 0.1) +
-  facet_wrap(~Simulation, ncol = 3) + 
-  ggtitle("sd gather 0.5")
-
-ggplot(sim1_s05, aes(x = Round)) +
-  geom_point(aes(y=Group_1_hap), color=1, size = 0.1) +
-  geom_point(aes(y=Group_2_hap), color=2, size = 0.1) +
-  geom_point(aes(y=Group_3_hap), color=3, size = 0.1) +
-  geom_point(aes(y=Group_4_hap), color=4, size = 0.1) +
-  facet_wrap(~Simulation, ncol = 3) + 
-  ggtitle("sd gather 1")
-
-ggplot(sim15_s05, aes(x = Round)) +
-  geom_point(aes(y=Group_1_hap), color=1, size = 0.1) +
-  geom_point(aes(y=Group_2_hap), color=2, size = 0.1) +
-  geom_point(aes(y=Group_3_hap), color=3, size = 0.1) +
-  geom_point(aes(y=Group_4_hap), color=4, size = 0.1) +
-  facet_wrap(~Simulation, ncol = 3) + 
-  ggtitle("sd gather 1.5")
 
 ```
 
