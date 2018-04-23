@@ -19,80 +19,105 @@ library(doSNOW)
 
 Functions
 ```{r Functions}
+######################
+### CREATE NETWORK ###
+######################
 # function that makes an edge list of a rewired caveman network and attaches group identity.
 create_network = function(nGroup,nActor, rewireP){
+  
+  # generate network and convert to edge list
   network = net.rewired.caveman(nGroup, nActor, rewireP)
   elist = as.data.frame(to.edgelist(network))
+  
+  # Make columns for groups in the edge list
   elist$group1 = 0
   elist$group2 = 0
   
+  # assign the right group number in the group columns
   A = nActor
   for (g in 1:nGroup){
-  g_a = (g-1) * A + 1:A
+  g_a = (g-1) * A + 1:A # a list of actors within g
   for (i in g_a){
     elist$group1[which(elist[,1]==i)] = g
     elist$group2[which(elist[,2]==i)] = g
     }
   }
   return(elist)
-}
-nGroup = 5
-nActor = 4
-nResource = 5
-rOffset = 0.1
+}# End function
 
-# Function that creates a data frame with actors groups and their resource prefrence
+
+
+
+#################################
+### CREATE RESOURCE DATAFRAME ###
+#################################
+# Function that creates a data frame with actors, groups, their resource prefrence and columns for all resources
 create_resource_df = function(nGroup,nActor,nResource,rOffset){
-  A = nActor
+  
+  #empty containers
   G = c()
   Pref = c()
   r_col = list() 
-  allA = 1:(nGroup*A) 
   
+  A = nActor
+  allA = 1:(nGroup*A) # list of all actors
+  
+  # Make a list of group numbers that corrspond to the list of all actors
   for (i in allA){
     for (g in 1:nGroup){
-      g_a = (g-1) * A + 1:A
+      g_a = (g-1) * A + 1:A # a list of actors within g
       if (i %in% g_a){
-        G = c(G,g)
+        G = c(G,g) 
       }
     }
   }
   
-  
+  # make list of prefrences that corrspond to the list of all actors
   for (r in 1:nResource){
     Pref = c(Pref,rep(r,A))
   }
   
+  # Combine the lists into a data frame and add a column for happiness
   df = data.frame(Actor = allA, Group = G, 
                   Preference = Pref, 
                   Happiness = 0)
   
-  r_col[1:nResource] = 0
-  r_col = as.data.frame(r_col)
-  names(r_col) = 1:nResource
-  df = cbind(df, r_col)
+  # Create reasource columns
+  r_col[1:nResource] = 0 # make the list as long as the number of resources
+  r_col = as.data.frame(r_col) # convert to dataframe
+  names(r_col) = 1:nResource # make column names
+  df = cbind(df, r_col) 
   
-  #random Offset
+  #Set random offset for resource preference
   for (a in df$Actor){
     off = rnorm(1,mean = 0, sd=rOffset)
     df$Preference[a] = df$Preference[a] + off
   }
   
   return(df)
-}
+} # End function
 
+
+
+
+#######################
+### GATHER RESOURCE ###
+#######################
+# Function that determains the resource gathered for all actors.
 gather_resource = function(df,sdGather, nResource, gatherSuccess){
   
+  # Empty container for output
   r_list = c()
-
   
-
+  # Loop through all actors in resource dataframe
   for (a in df$Actor){
-    S = rbinom(1,1,gatherSuccess)
-    if (S == 1){
+    S = rbinom(1,1,gatherSuccess) # Determain if successfull
+    
+    if (S == 1){ # if succesfull
       
-      R = round(rnorm(1,mean = df$Preference[a], sd = sdGather))
+      R = round(rnorm(1,mean = df$Preference[a], sd = sdGather)) # draw a resource
       
+      # Loops that simulates the resources "being on a wheel" so that that the resource below 1 is the highest resource number an vice versa
       for (i in 1:1000){
         if (R < 1){
           R = nResource + R
@@ -104,51 +129,80 @@ gather_resource = function(df,sdGather, nResource, gatherSuccess){
           R = -nResource + R
         } else {break}
       }
-    } else {R = 0}
-    r_list[a] = R
-  }
-  return(r_list)
-}
+    } else { #if not successfull
+      R = 0
+    } 
+    
+    r_list[a] = R # list of resources
+    
+  } # End looping through actors
+  return(r_list) 
+}# End function
 
+
+
+###########################
+### CALCULATE HAPPINESS ###
+###########################
+#Function that calculates the happiness score for either all actors or just one. This is controled by logical expression with the "all" parameter. if all=TRUE actor must be specified.
 calculate_happiness = function(df, nResource, nGroup, nActor, actor, all=F){
   
-  if (all == T) {
-    for (a in df$Actor){
+  if (all == T) {# If calculating for all actors
+    
+    for (a in df$Actor){ # Loop through all actors in resource dataframe
+      
+      #Extract the actors resources 
+      #as.data.frame() makes sure it works with one resource
       R = as.data.frame(df[a,5:(4+nResource)])
-      temp_hap = 0
-      for (r in 1:nResource){
+      
+      #Temporary happiness score
+      temp_hap = 0 
+      
+      for (r in 1:nResource){ #loop through resources
         
+        # Determain dependend resource
         if (r == nResource){
           d_r = 1
         } else {
           d_r = r + 1
         }
   
-        temp_hap = temp_hap + R[1,r] * R[1,d_r]
-      }
+        temp_hap = temp_hap + R[1,r] * R[1,d_r] # THE EQUATION
+      } # End loop through resources
       
+      # Log transform happiness if above 0 else happiness is just 0
+      # This is to avoid having negative numbers after log transfromation
       if (temp_hap > 1){
         temp_hap = log(temp_hap)
       } else {
         temp_hap = 0
       }
       
+      # Update the actors happiness
       df[a,4] = temp_hap
-    }
+      
+    } # End loop through actors
     
+    # Calculate the influence of group happiness
     for (g in 1:nGroup){
       g_df = subset(df, Group == g)
-      g_hap  = mean(g_df$Happiness)/(1+max(g_df$Happiness)-min(g_df$Happiness))
-      g_a = (g-1) * nActor + 1:nActor
+      g_hap  = mean(g_df$Happiness)/(1+max(g_df$Happiness)-min(g_df$Happiness)) # THE EQUATION 
+      g_a = (g-1) * nActor + 1:nActor # list of actors in g
       df[g_a,4] = df[g_a,4] + g_hap
     }
     
-    return(df)
+    return(df) # return the hole dataframe
     
-  } else {
+  } else { # If calculating for a single actor
     
+    #Extract the actors resources
+    #as.data.frame() makes sure it works with one resource
     R = as.data.frame(df[actor,5:(4+nResource)])
+    
+    #Temporary happiness score
     temp_hap = 0
+    
+    # Determain dependend resource
     for (r in 1:nResource){
         
       if (r == nResource){
@@ -157,10 +211,12 @@ calculate_happiness = function(df, nResource, nGroup, nActor, actor, all=F){
         d_r = r + 1
       }
   
-      temp_hap = temp_hap + R[1,r] * R[1,d_r]
+      temp_hap = temp_hap + R[1,r] * R[1,d_r] # THE EQUATION
         
     }
     
+    # Log transform happiness if above 0 else happiness is just 0
+    # This is to avoid having negative numbers after log transfromation
     if (temp_hap > 1){
         temp_hap = log(temp_hap)
       } else {
@@ -168,51 +224,67 @@ calculate_happiness = function(df, nResource, nGroup, nActor, actor, all=F){
       }
     
     g = df[actor,2]
-    g_df =  df[((g-1)*nActor+1):(g*nActor),] 
-    g_hap = mean(g_df$Happiness)/(1+max(g_df$Happiness)-min(g_df$Happiness))
+    g_df =  df[((g-1)*nActor+1):(g*nActor),] # equivalent to subset(df, Group == g)... BUT a tiny bit faster... Yes i did a speed test a sunday evening...!
+    g_hap = mean(g_df$Happiness)/(1+max(g_df$Happiness)-min(g_df$Happiness)) # THE EQUATION 
     temp_hap = temp_hap + g_hap
     
-    return(temp_hap)
+    return(temp_hap) #return the single happiness value
     
-  }
-}
+  } #end if else statement (the one about all actors)
+}# End function
 
+
+
+###############
+### MEET UP ###
+###############
+# function that simulates all the actors in a network meeting and potentially trading.
 meet_up = function(network,r_list,df,nResource,hateLevel,nActor){
   
+  #Empty containers for trade data
   trade = 0
   noTrade = 0
   failTrade = 0
   outTrade = 0
   
+  # Randomize the row structure of the network edge list.
+  # We do this to make the sequence of interaction random, instead of starting with the first actor and forward
   nw = network[sample(nrow(network)),]
+  
   n=1
-  for (a1 in nw[,1]){
-    a1 = nw[n,1]
-    a2 = nw[n,2]
-    g1 = nw[n,3]
-    g2 = nw[n,4]
+  for (a1 in nw[,1]){ #Loop Through all the actors in the first column of the edge list (actor 1)
     
-    LOVE = runif(1,min = 0, max = 100)
+    a2 = nw[n,2] # Who is actor 1 interaction with? (actor 2!)
+    g1 = nw[n,3] # group of actor 1
+    g2 = nw[n,4] # group of actor 2
     
-    if (LOVE > hateLevel | g1 == g2){
-      r1 = r_list[a1]
-      r2 = r_list[a2]
+    LOVE = runif(1,min = 0, max = 100) # Find Love
+    
+    #If love is above hate or the actors are in the same group then interact.
+    if (LOVE > hateLevel | g1 == g2){ 
       
-      temp_r_df1 = df
-      temp_r_df2 = df
-      temp_r_df1_t = df
-      temp_r_df2_t = df
+      r1 = r_list[a1] # resource of actor 1
+      r2 = r_list[a2] # resource of actor 2
       
+      # Create tempoary dataframes from the resource dataframe
+      temp_r_df1 = df # actor 1's no-trade scenario
+      temp_r_df2 = df # actor 2's no-trade scenario
+      temp_r_df1_t = df # actor 1's trade scenario
+      temp_r_df2_t = df # actor 2's trade scenario
+      
+      # if actor 1 got a resource
       if (r1 != 0){
-        temp_r_df1[a1,4+r1] = temp_r_df1[a1,4+r1] + 1
-        temp_r_df2_t[a2,4+r1] = temp_r_df1_t[a2,4+r1] + 1
+        temp_r_df1[a1,4+r1] = temp_r_df1[a1,4+r1] + 1 # Give resource to actor 1's no-trade scenario
+        temp_r_df2_t[a2,4+r1] = temp_r_df1_t[a2,4+r1] + 1 # Give resource to actor 2's trade scenario
       }
       
+       # if actor 2 got a resource
       if (r2 != 0){
-        temp_r_df1_t[a1,4+r2] = temp_r_df1_t[a1,4+r2] + 1
-        temp_r_df2[a2,4+r2] = temp_r_df2[a2,4+r2] + 1
+        temp_r_df1_t[a1,4+r2] = temp_r_df1_t[a1,4+r2] + 1 # Give resource to actor 1's trade scenario
+        temp_r_df2[a2,4+r2] = temp_r_df2[a2,4+r2] + 1 # Give resource to actor 2's no-trade scenario
       }
       
+      #Calculate happiness for all 4 scenarios
       hap1 = calculate_happiness(temp_r_df1,nResource, actor = a1, nActor = nActor)
       hap2 = calculate_happiness(temp_r_df2,nResource, actor = a2, nActor = nActor)
       hap1_t = calculate_happiness(temp_r_df1_t,nResource, actor = a1, nActor = nActor)
@@ -228,20 +300,20 @@ meet_up = function(network,r_list,df,nResource,hateLevel,nActor){
       } else {t2 = 1}
       
       # TRADE or NO TRADE
-      if (t1 + t2 == 2){
-        r_list[a2] = r1
-        r_list[a1] = r2 
+      if (t1 + t2 == 2){ # if both actors want to trade
+        r_list[a2] = r1 # put actor 1's resource in actor 2's place
+        r_list[a1] = r2 # put actor 2's resource in actor 1's place
         trade = trade + 1
       } 
-      if (t1 + t2 == 1){
+      if (t1 + t2 == 1){ #if one wants to trade but not the other
         failTrade = failTrade + 1
       }
-      if (t1 + t2 == 0){
+      if (t1 + t2 == 0){ #if no one wants to trade
         noTrade = noTrade + 1
       }
       
-      if (t1 + t2 == 2 & g1 != g2){
-        outTrade = outTrade + 1
+      if (t1 + t2 == 2 & g1 != g2){ # if there was a trade and they were not in same group
+        outTrade = outTrade + 1 # INTERGROUP COOPERATION! (kinda)
       }
     
        
@@ -258,48 +330,57 @@ meet_up = function(network,r_list,df,nResource,hateLevel,nActor){
     n = n + 1
   }
   
-  #create trade df
+  #create trade dataframe
   t_df = data.frame(Trade = trade, No_Trade = noTrade, Fail_Trade = failTrade, Outgroup_Trade = outTrade)
   
+  # Return a list of dataframes with the updated resource dataframe and the trade dataframe
   return(list(df,t_df))
 }
 
 
 
 
-
+##################
+### SIMULATION ###
+##################
+# Function that put all the previus fucntions together to make the final simulation.
 simulation = function(name,nSim,nRounds,nGroup,nActor,nResource,rOffset,sdGather,gatherSuccess,hateLevel,rewireP, degration, premade_nw=F, nw_df_list){
   
-  ptm = proc.time()
+  # Record the process time (this is just to measure how time consuming it is to run the simulation)
+  ptm = proc.time() 
   
-  results = data.frame()
+  print(name) # If running the function multiple times it is nice to know where we are at.
   
-  print(name)
-  
+  # A for loop running the simulations in parralelle across CPU cores
+  # Equivalent to "for (sim in 1:nSim)" except that it rbinds everything in the end (and runs A LOT faster)
   results = foreach(sim = 1:nSim, .combine = "rbind", 
                     .export = c("create_resource_df","gather_resource","create_network","meet_up","calculate_happiness"),
-                    .verbose = F) %dopar% {
+                    .packages = "fastnet") %dopar% {
     
+    # Create reasource dataframe
     resource_df = create_resource_df(nGroup,nActor,nResource,rOffset)
     
+    # Empty container
     results_round = data.frame()
     
     for (round in 1:nRounds){
       
-      #print(paste(name,":  -  ","simulation:",sim,"  -  round:",round))
-      
+      # Gather resources and put them into a list
       resource_list = gather_resource(resource_df,sdGather,nResource,gatherSuccess)
       
+      # If no there is no premade list of networks then create a network.
       if (premade_nw == T){
         network = nw_df_list[[round]]
       } else {
         network = create_network(nGroup,nActor,rewireP)
       } 
       
+      # Meet up and do the interactions.
       meet_up_outcome = meet_up(network,resource_list,resource_df,nResource,hateLevel,nActor)
       resource_df = meet_up_outcome[[1]]
       trade_data = meet_up_outcome[[2]]
       
+      # Update the happiness of everyone
       resource_df = calculate_happiness(resource_df,nResource,nGroup,nActor,all=T)
       
       
@@ -319,29 +400,38 @@ simulation = function(name,nSim,nRounds,nGroup,nActor,nResource,rOffset,sdGather
       }
       
       
+      #____
+      #OUTPUT DATA 
+      #----
+      # make group columns for result dataframe
       g_col = list()
       g_col[1:nGroup] = 0
       g_col = as.data.frame(g_col)
       names(g_col) = paste("Group_", 1:nGroup,"_hap", sep="")
 
+      # Find the mean happiness for each group
       for (g in 1:nGroup){
         sub_df = subset(resource_df, Group == g)
         g_mean = round(mean(sub_df$Happiness),digits = 2)
         g_col[1,g] = g_mean
       }
-
+      
+      # Create dataframe with data from curent round
       round_data = data.frame(Simulation = sim, Round = round, SD_gather = sdGather)
       
-      temp_results_round = cbind(round_data,g_col,trade_data)
-      results_round = rbind(results_round,temp_results_round)
-        
+      temp_results_round = cbind(round_data,g_col,trade_data) # cbind with other current round data
+      results_round = rbind(results_round,temp_results_round) # rbind with previous round data
       
     }# End round loop
-    results_round   #results = rbind(results,results_round)
+    
+    results_round # Object that the foreach function should rbind 
+    
   }#End simulation loop
-  # Stop the clock
+  
+  # Calculate the time since we started and print it
   print(proc.time() - ptm)
   print("See you in 25 years!")
+  
   return(results)
 }#End function 
 
@@ -365,7 +455,7 @@ registerDoSNOW(makeCluster(cores, type = "SOCK"))
 
 test_sim_results = simulation(name = "test_sim",
                          nSim = 4,
-                         nRounds = 20, # Should not be changed above 1000 if running with network1000
+                         nRounds = 5, # Should not be changed above 1000 if running with network1000
                          nGroup = 4, # Should not be changed if running with network1000
                          nActor = 12, # Should not be changed if running with network1000
                          nResource = 1, # Must be a divisor of nGroup
@@ -375,8 +465,9 @@ test_sim_results = simulation(name = "test_sim",
                          hateLevel = 0,
                          rewireP = 0.2, # Should not be changed if running with network1000
                          degration = 0.4,
-                         premade_nw = T,
-                         nw_df_list = network1000)
+                         premade_nw = F,
+                         nw_df_list = 0#network1000
+                         )
 
 ```
 
