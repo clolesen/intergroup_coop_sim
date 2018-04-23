@@ -1,0 +1,510 @@
+---
+title: "Intergroup_coop_sim"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Libraries
+```{r}
+library(tidyverse)
+library(fastnet)
+library(foreach)
+library(doParallel)
+library(doSNOW) 
+
+```
+
+Functions
+```{r Functions}
+# function that makes an edge list of a rewired caveman network and attaches group identity.
+create_network = function(nGroup,nActor, rewireP){
+  network = net.rewired.caveman(nGroup, nActor, rewireP)
+  elist = as.data.frame(to.edgelist(network))
+  elist$group1 = 0
+  elist$group2 = 0
+  
+  A = nActor
+  for (g in 1:nGroup){
+  g_a = (g-1) * A + 1:A
+  for (i in g_a){
+    elist$group1[which(elist[,1]==i)] = g
+    elist$group2[which(elist[,2]==i)] = g
+    }
+  }
+  return(elist)
+}
+nGroup = 5
+nActor = 4
+nResource = 5
+rOffset = 0.1
+
+# Function that creates a data frame with actors groups and their resource prefrence
+create_resource_df = function(nGroup,nActor,nResource,rOffset){
+  A = nActor
+  G = c()
+  Pref = c()
+  r_col = list() 
+  allA = 1:(nGroup*A) 
+  
+  for (i in allA){
+    for (g in 1:nGroup){
+      g_a = (g-1) * A + 1:A
+      if (i %in% g_a){
+        G = c(G,g)
+      }
+    }
+  }
+  
+  
+  for (r in 1:nResource){
+    Pref = c(Pref,rep(r,A))
+  }
+  
+  df = data.frame(Actor = allA, Group = G, 
+                  Preference = Pref, 
+                  Happiness = 0)
+  
+  r_col[1:nResource] = 0
+  r_col = as.data.frame(r_col)
+  names(r_col) = 1:nResource
+  df = cbind(df, r_col)
+  
+  #random Offset
+  for (a in df$Actor){
+    off = rnorm(1,mean = 0, sd=rOffset)
+    df$Preference[a] = df$Preference[a] + off
+  }
+  
+  return(df)
+}
+
+gather_resource = function(df,sdGather, nResource, gatherSuccess){
+  
+  r_list = c()
+
+  
+
+  for (a in df$Actor){
+    S = rbinom(1,1,gatherSuccess)
+    if (S == 1){
+      
+      R = round(rnorm(1,mean = df$Preference[a], sd = sdGather))
+      
+      for (i in 1:1000){
+        if (R < 1){
+          R = nResource + R
+        } else {break}
+      }
+      
+      for (i in 1:1000){
+        if (R > nResource){
+          R = -nResource + R
+        } else {break}
+      }
+    } else {R = 0}
+    r_list[a] = R
+  }
+  return(r_list)
+}
+
+calculate_happiness = function(df, nResource, nGroup, nActor, actor, all=F){
+  
+  if (all == T) {
+    for (a in df$Actor){
+      R = as.data.frame(df[a,5:(4+nResource)])
+      temp_hap = 0
+      for (r in 1:nResource){
+        
+        if (r == nResource){
+          d_r = 1
+        } else {
+          d_r = r + 1
+        }
+  
+        temp_hap = temp_hap + R[1,r] * R[1,d_r]
+      }
+      
+      if (temp_hap > 1){
+        temp_hap = log(temp_hap)
+      } else {
+        temp_hap = 0
+      }
+      
+      df[a,4] = temp_hap
+    }
+    
+    for (g in 1:nGroup){
+      g_df = subset(df, Group == g)
+      g_hap  = mean(g_df$Happiness)/(1+max(g_df$Happiness)-min(g_df$Happiness))
+      g_a = (g-1) * nActor + 1:nActor
+      df[g_a,4] = df[g_a,4] + g_hap
+    }
+    
+    return(df)
+    
+  } else {
+    
+    R = as.data.frame(df[actor,5:(4+nResource)])
+    temp_hap = 0
+    for (r in 1:nResource){
+        
+      if (r == nResource){
+        d_r = 1
+      } else {
+        d_r = r + 1
+      }
+  
+      temp_hap = temp_hap + R[1,r] * R[1,d_r]
+        
+    }
+    
+    if (temp_hap > 1){
+        temp_hap = log(temp_hap)
+      } else {
+        temp_hap = 0
+      }
+    
+    g = df[actor,2]
+    g_df =  df[((g-1)*nActor+1):(g*nActor),] 
+    g_hap = mean(g_df$Happiness)/(1+max(g_df$Happiness)-min(g_df$Happiness))
+    temp_hap = temp_hap + g_hap
+    
+    return(temp_hap)
+    
+  }
+}
+
+meet_up = function(network,r_list,df,nResource,hateLevel,nActor){
+  
+  trade = 0
+  noTrade = 0
+  failTrade = 0
+  outTrade = 0
+  
+  nw = network[sample(nrow(network)),]
+  n=1
+  for (a1 in nw[,1]){
+    a1 = nw[n,1]
+    a2 = nw[n,2]
+    g1 = nw[n,3]
+    g2 = nw[n,4]
+    
+    LOVE = runif(1,min = 0, max = 100)
+    
+    if (LOVE > hateLevel | g1 == g2){
+      r1 = r_list[a1]
+      r2 = r_list[a2]
+      
+      temp_r_df1 = df
+      temp_r_df2 = df
+      temp_r_df1_t = df
+      temp_r_df2_t = df
+      
+      if (r1 != 0){
+        temp_r_df1[a1,4+r1] = temp_r_df1[a1,4+r1] + 1
+        temp_r_df2_t[a2,4+r1] = temp_r_df1_t[a2,4+r1] + 1
+      }
+      
+      if (r2 != 0){
+        temp_r_df1_t[a1,4+r2] = temp_r_df1_t[a1,4+r2] + 1
+        temp_r_df2[a2,4+r2] = temp_r_df2[a2,4+r2] + 1
+      }
+      
+      hap1 = calculate_happiness(temp_r_df1,nResource, actor = a1, nActor = nActor)
+      hap2 = calculate_happiness(temp_r_df2,nResource, actor = a2, nActor = nActor)
+      hap1_t = calculate_happiness(temp_r_df1_t,nResource, actor = a1, nActor = nActor)
+      hap2_t = calculate_happiness(temp_r_df2_t,nResource, actor = a2, nActor = nActor)
+      
+      #actors decide if they want to trade
+      if (hap1 > hap1_t){
+         t1 = 0
+      } else {t1 = 1}
+      
+      if (hap2 > hap2_t){
+         t2 = 0
+      } else {t2 = 1}
+      
+      # TRADE or NO TRADE
+      if (t1 + t2 == 2){
+        r_list[a2] = r1
+        r_list[a1] = r2 
+        trade = trade + 1
+      } 
+      if (t1 + t2 == 1){
+        failTrade = failTrade + 1
+      }
+      if (t1 + t2 == 0){
+        noTrade = noTrade + 1
+      }
+      
+      if (t1 + t2 == 2 & g1 != g2){
+        outTrade = outTrade + 1
+      }
+    
+       
+    } #end IF statement (love > hate)
+    n = n + 1
+  } #end loop through network
+  
+  # update resources in resource df 
+  n = 1
+  for (r in r_list){
+    if (r != 0){
+      df[n,4+r] = df[n,4+r] + 1
+    }
+    n = n + 1
+  }
+  
+  #create trade df
+  t_df = data.frame(Trade = trade, No_Trade = noTrade, Fail_Trade = failTrade, Outgroup_Trade = outTrade)
+  
+  return(list(df,t_df))
+}
+
+
+
+
+
+simulation = function(name,nSim,nRounds,nGroup,nActor,nResource,rOffset,sdGather,gatherSuccess,hateLevel,rewireP, degration, premade_nw=F, nw_df_list){
+  
+  ptm = proc.time()
+  
+  results = data.frame()
+  
+  print(name)
+  
+  results = foreach(sim = 1:nSim, .combine = "rbind", 
+                    .export = c("create_resource_df","gather_resource","create_network","meet_up","calculate_happiness"),
+                    .verbose = F) %dopar% {
+    
+    resource_df = create_resource_df(nGroup,nActor,nResource,rOffset)
+    
+    results_round = data.frame()
+    
+    for (round in 1:nRounds){
+      
+      #print(paste(name,":  -  ","simulation:",sim,"  -  round:",round))
+      
+      resource_list = gather_resource(resource_df,sdGather,nResource,gatherSuccess)
+      
+      if (premade_nw == T){
+        network = nw_df_list[[round]]
+      } else {
+        network = create_network(nGroup,nActor,rewireP)
+      } 
+      
+      meet_up_outcome = meet_up(network,resource_list,resource_df,nResource,hateLevel,nActor)
+      resource_df = meet_up_outcome[[1]]
+      trade_data = meet_up_outcome[[2]]
+      
+      resource_df = calculate_happiness(resource_df,nResource,nGroup,nActor,all=T)
+      
+      
+      #Resource DEGRATION
+      resource_df[,5:(4+nResource)] = round(resource_df[,5:(4+nResource)] - degration, digits = 2)
+      ncol = 5
+      
+      # Make sure an actor can have a minimum of 0 resources
+      for (col in 5:(4+nResource)){
+        n = 1
+        for (r in resource_df[,col]){
+          if (r < 0){
+            resource_df[n,col] = 0
+          }
+          n = n + 1
+        }
+      }
+      
+      
+      g_col = list()
+      g_col[1:nGroup] = 0
+      g_col = as.data.frame(g_col)
+      names(g_col) = paste("Group_", 1:nGroup,"_hap", sep="")
+
+      for (g in 1:nGroup){
+        sub_df = subset(resource_df, Group == g)
+        g_mean = round(mean(sub_df$Happiness),digits = 2)
+        g_col[1,g] = g_mean
+      }
+
+      round_data = data.frame(Simulation = sim, Round = round, SD_gather = sdGather)
+      
+      temp_results_round = cbind(round_data,g_col,trade_data)
+      results_round = rbind(results_round,temp_results_round)
+        
+      
+    }# End round loop
+    results_round   #results = rbind(results,results_round)
+  }#End simulation loop
+  # Stop the clock
+  print(proc.time() - ptm)
+  print("See you in 25 years!")
+  return(results)
+}#End function 
+
+```
+
+Run simulation
+```{r Run sim}
+
+#make premade network
+network1000 = list()
+for (i in 1:1000){
+  network = create_network(4,12,0.2)
+  network = list(network)
+  network1000 = c(network1000,network)
+}
+
+# THESE LINES MUST BE RUN BEFORE SIMULATION FUNCTION
+cores = detectCores()
+registerDoSNOW(makeCluster(cores, type = "SOCK"))
+
+
+test_sim_results = simulation(name = "test_sim",
+                         nSim = 4,
+                         nRounds = 20, # Should not be changed above 1000 if running with network1000
+                         nGroup = 4, # Should not be changed if running with network1000
+                         nActor = 12, # Should not be changed if running with network1000
+                         nResource = 1, # Must be a divisor of nGroup
+                         rOffset = 0.0,
+                         sdGather = 2,
+                         gatherSuccess = 0.5,
+                         hateLevel = 0,
+                         rewireP = 0.2, # Should not be changed if running with network1000
+                         degration = 0.4,
+                         premade_nw = T,
+                         nw_df_list = network1000)
+
+```
+
+
+PLOTS
+```{r}
+
+ggplot(sim_results, aes(x = Round)) +
+  geom_point(aes(y=Group_1_hap), color=1, size = 0.1) +
+  geom_point(aes(y=Group_2_hap), color=2, size = 0.1) +
+  geom_point(aes(y=Group_3_hap), color=3, size = 0.1) +
+  geom_point(aes(y=Group_4_hap), color=4, size = 0.1) +
+  #geom_point(aes(y=Group_5hap), color=5, size = 0.1) +
+  #geom_point(aes(y=Group_6hap), color=6, size = 0.1) +
+  #geom_line(aes(y=Trade), size = 0.5, color = "gray") +
+  facet_wrap(~Simulation, ncol = 3)
+
+
+ggplot(sim0, aes(x = Round)) +
+  geom_point(aes(y=Group_1_hap), color=1, size = 0.1) +
+  geom_point(aes(y=Group_2_hap), color=2, size = 0.1) +
+  geom_point(aes(y=Group_3_hap), color=3, size = 0.1) +
+  geom_point(aes(y=Group_4_hap), color=4, size = 0.1) +
+  facet_wrap(~Simulation, ncol = 3) + 
+  ggtitle("sd gather 0")
+
+ggplot(sim05, aes(x = Round)) +
+  geom_point(aes(y=Group_1_hap), color=1, size = 0.1) +
+  geom_point(aes(y=Group_2_hap), color=2, size = 0.1) +
+  geom_point(aes(y=Group_3_hap), color=3, size = 0.1) +
+  geom_point(aes(y=Group_4_hap), color=4, size = 0.1) +
+  facet_wrap(~Simulation, ncol = 3) + 
+  ggtitle("sd gather 0.5")
+
+ggplot(sim1, aes(x = Round)) +
+  geom_point(aes(y=Group_1_hap), color=1, size = 0.1) +
+  geom_point(aes(y=Group_2_hap), color=2, size = 0.1) +
+  geom_point(aes(y=Group_3_hap), color=3, size = 0.1) +
+  geom_point(aes(y=Group_4_hap), color=4, size = 0.1) +
+  facet_wrap(~Simulation, ncol = 3) + 
+  ggtitle("sd gather 1")
+
+ggplot(sim15, aes(x = Round)) +
+  geom_point(aes(y=Group_1_hap), color=1, size = 0.1) +
+  geom_point(aes(y=Group_2_hap), color=2, size = 0.1) +
+  geom_point(aes(y=Group_3_hap), color=3, size = 0.1) +
+  geom_point(aes(y=Group_4_hap), color=4, size = 0.1) +
+  facet_wrap(~Simulation, ncol = 3) + 
+  ggtitle("sd gather 1.5")
+
+ggplot(sim0, aes(x=Round)) +
+  geom_smooth(aes(y = Outgroup_Trade), color="1") +
+  geom_smooth(aes(y = sim05$Outgroup_Trade), color="2") +
+  geom_smooth(aes(y = sim1$Outgroup_Trade), color="3") +
+  geom_smooth(aes(y = sim15$Outgroup_Trade), color="4")
+
+sim0$Ingroup_Trade = sim0$Trade - sim0$Outgroup_Trade
+sim05$Ingroup_Trade = sim05$Trade - sim05$Outgroup_Trade
+sim1$Ingroup_Trade = sim1$Trade - sim1$Outgroup_Trade
+sim15$Ingroup_Trade = sim15$Trade - sim15$Outgroup_Trade
+
+ggplot(sim0, aes(x=Round)) +
+  geom_smooth(aes(y = Ingroup_Trade), color="1") +
+  geom_smooth(aes(y = sim05$Ingroup_Trade), color="2") +
+  geom_smooth(aes(y = sim1$Ingroup_Trade), color="3") +
+  geom_smooth(aes(y = sim15$Ingroup_Trade), color="4")
+
+ggplot(sim0, aes(x=Round)) +
+  geom_smooth(aes(y = Trade), color="1") +
+  geom_smooth(aes(y = sim05$Trade), color="2") +
+  geom_smooth(aes(y = sim1$Trade), color="3") +
+  geom_smooth(aes(y = sim15$Trade), color="4")
+
+ggplot(sim0, aes(x=Round)) +
+  geom_smooth(aes(y = Fail_Trade), color="1") +
+  geom_smooth(aes(y = sim05$Fail_Trade), color="2") +
+  geom_smooth(aes(y = sim1$Fail_Trade), color="3") +
+  geom_smooth(aes(y = sim15$Fail_Trade), color="4")
+
+ggplot(sim0, aes(x=Round)) +
+  geom_smooth(aes(y = No_Trade), color="1") +
+  geom_smooth(aes(y = sim05$No_Trade), color="2") +
+  geom_smooth(aes(y = sim1$No_Trade), color="3") +
+  geom_smooth(aes(y = sim15$No_Trade), color="4")
+
+
+ggplot(sim0, aes(x = Round)) +
+  geom_smooth(aes(y=Group_1_hap), color=1, size = 0.1) +
+  geom_smooth(aes(y=Group_2_hap), color=2, size = 0.1) +
+  geom_smooth(aes(y=Group_3_hap), color=3, size = 0.1) +
+  geom_smooth(aes(y=Group_4_hap), color=4, size = 0.1) +
+  facet_wrap(~Simulation, ncol = 3) + 
+  ggtitle("sd gather 05")
+
+
+
+
+ggplot(sim0_s05, aes(x = Round)) +
+  geom_smooth(aes(y=Group_1_hap), color=1, size = 0.1) +
+  geom_smooth(aes(y=Group_2_hap), color=2, size = 0.1) +
+  geom_smooth(aes(y=Group_3_hap), color=3, size = 0.1) +
+  geom_smooth(aes(y=Group_4_hap), color=4, size = 0.1) +
+  facet_wrap(~Simulation, ncol = 3) + 
+  ggtitle("sd gather 0")
+
+ggplot(sim0_s05, aes(x = Round)) +
+  geom_point(aes(y=Group_1_hap), color=1, size = 0.1) +
+  geom_point(aes(y=Group_2_hap), color=2, size = 0.1) +
+  geom_point(aes(y=Group_3_hap), color=3, size = 0.1) +
+  geom_point(aes(y=Group_4_hap), color=4, size = 0.1) +
+  facet_wrap(~Simulation, ncol = 3) + 
+  ggtitle("sd gather 0.5")
+
+ggplot(sim1_s05, aes(x = Round)) +
+  geom_point(aes(y=Group_1_hap), color=1, size = 0.1) +
+  geom_point(aes(y=Group_2_hap), color=2, size = 0.1) +
+  geom_point(aes(y=Group_3_hap), color=3, size = 0.1) +
+  geom_point(aes(y=Group_4_hap), color=4, size = 0.1) +
+  facet_wrap(~Simulation, ncol = 3) + 
+  ggtitle("sd gather 1")
+
+ggplot(sim15_s05, aes(x = Round)) +
+  geom_point(aes(y=Group_1_hap), color=1, size = 0.1) +
+  geom_point(aes(y=Group_2_hap), color=2, size = 0.1) +
+  geom_point(aes(y=Group_3_hap), color=3, size = 0.1) +
+  geom_point(aes(y=Group_4_hap), color=4, size = 0.1) +
+  facet_wrap(~Simulation, ncol = 3) + 
+  ggtitle("sd gather 1.5")
+
+```
+
