@@ -181,92 +181,50 @@ gather_resource = function(df,sdGather, nResource, gatherSuccess){
 ### CALCULATE HAPPINESS ###
 ###########################.
 #Function that calculates the happiness score for either all actors or just one. This is controled by logical expression with the "all" parameter. if all=TRUE actor must be specified.
-calculate_happiness = function(df, nResource, nGroup, nActor, actor, all=F){
+calculate_happiness = function(df, nResource, nGroup, nActor){
   
-  if (all == T) {# If calculating for all actors
-    
-    for (a in df$Actor){ # Loop through all actors in resource dataframe
-      
-      #Extract the actors resources 
-      #as.data.frame() makes sure it works with one resource
-      R = as.data.frame(df[a,5:(4+nResource)])
-      
-      #Temporary happiness score
-      temp_hap = 0 
-      
-      for (r in 1:nResource){ #loop through resources
-        
-        # Determain dependend resource
-        if (r == nResource){
-          d_r = 1
-        } else {
-          d_r = r + 1
-        }
   
-        temp_hap = temp_hap + R[1,r] * R[1,d_r] # THE EQUATION
-      } # End loop through resources
-      
-      # Log transform happiness if above 0 else happiness is just 0
-      # This is to avoid having negative numbers after log transfromation
-      if (temp_hap > 1){
-        temp_hap = log(temp_hap)
-      } else {
-        temp_hap = 0
-      }
-      
-      # Update the actors happiness
-      df[a,4] = temp_hap
-      
-    } # End loop through actors
+  for (a in df$Actor){ # Loop through all actors in resource dataframe
     
-    # Calculate the influence of group happiness
-    for (g in 1:nGroup){
-      g_df = subset(df, Group == g)
-      g_hap  = mean(g_df$Happiness)/(1+max(g_df$Happiness)-min(g_df$Happiness)) # THE EQUATION 
-      g_a = (g-1) * nActor + 1:nActor # list of actors in g
-      df[g_a,4] = df[g_a,4] + g_hap
-    }
-    
-    return(df) # return the hole dataframe
-    
-  } else { # If calculating for a single actor
-    
-    #Extract the actors resources
+    #Extract the actors resources 
     #as.data.frame() makes sure it works with one resource
-    R = as.data.frame(df[actor,5:(4+nResource)])
+    R = as.data.frame(df[a,5:(4+nResource)])
     
     #Temporary happiness score
-    temp_hap = 0
+    temp_hap = 0 
     
-    # Determain dependend resource
-    for (r in 1:nResource){
-        
+    for (r in 1:nResource){ #loop through resources
+      
+      # Determain dependend resource
       if (r == nResource){
         d_r = 1
       } else {
         d_r = r + 1
       }
-  
+      
       temp_hap = temp_hap + R[1,r] * R[1,d_r] # THE EQUATION
-        
-    }
+    } # End loop through resources
     
-    # Log transform happiness if above 0 else happiness is just 0
-    # This is to avoid having negative numbers after log transfromation
-    if (temp_hap > 1){
-        temp_hap = log(temp_hap)
-      } else {
-        temp_hap = 0
-      }
+
+    # Log transform happiness 
+    temp_hap = log(1+temp_hap) # we plus hap with 1 because log(1)=0 and we want to start our scale at 0
     
-    g = df[actor,2]
-    g_df =  df[((g-1)*nActor+1):(g*nActor),] # equivalent to subset(df, Group == g)... BUT a tiny bit faster... Yes i did a speed test a sunday evening...!
-    g_hap = mean(g_df$Happiness)/(1+max(g_df$Happiness)-min(g_df$Happiness)) # THE EQUATION 
-    temp_hap = temp_hap + g_hap
+    # Update the actors happiness
+    df[a,4] = temp_hap
     
-    return(temp_hap) #return the single happiness value
-    
-  } #end if else statement (the one about all actors)
+  } # End loop through actors
+  
+  # Calculate the influence of group happiness
+  for (g in 1:nGroup){
+    g_df = subset(df, Group == g)
+    g_hap  = mean(g_df$Happiness)/(1+max(g_df$Happiness)-min(g_df$Happiness)) # THE EQUATION 
+    g_a = (g-1) * nActor + 1:nActor # list of actors in g
+    df[g_a,4] = df[g_a,4] + g_hap
+  }
+  
+  return(df) # return the hole dataframe
+  
+  
 }# End function
 
 
@@ -437,7 +395,7 @@ simulation = function(name,nSim,nRounds,nGroup,nActor,nResource,rOffset,sdGather
     sim_data = data.frame()
     
     # creating a dataframe for desicion memory
-    memory_df = data.frame(Actor = 1:(nActor*nGroup), InCoopMem = 1, InDefMem = 1, OutCoopMem = 1, OutDefMem = 1) 
+    memory_df = data.frame(Actor = 1:(nActor*nGroup), InCoopMem = 0.5, InDefMem = 0.5, OutCoopMem = 0.5, OutDefMem = 0.5) 
     
     for (round in 1:nRounds){ # loop through rounds
       
@@ -460,7 +418,7 @@ simulation = function(name,nSim,nRounds,nGroup,nActor,nResource,rOffset,sdGather
       hap_list = resource_df[,4]
       
       # Update the happiness of everyone
-      resource_df = calculate_happiness(resource_df,nResource,nGroup,nActor,all=T)
+      resource_df = calculate_happiness(resource_df,nResource,nGroup,nActor)
 
       # Update memory
       memory_df = update_memory(meet_up_data, memory_df, hap_list, nActor, nGroup, round,resource_df)
@@ -527,19 +485,19 @@ registerDoSNOW(makeCluster(cores, type = "SOCK"))
 
 
 test_sim_results = simulation(name = "test_sim",
-                         nSim = 4,
-                         nRounds = 50, # Should not be changed above 1000 if running with network1000
+                         nSim = 1,
+                         nRounds = 100, # Should not be changed above 1000 if running with network1000
                          nGroup = 8, # Should not be changed if running with network1000
-                         nActor = 10, # Should not be changed if running with network1000
+                         nActor = 5, # Should not be changed if running with network1000
                          nResource = 4, # Must be a divisor of nGroup
                          rOffset = 0.2,
                          sdGather = 0.5,
                          gatherSuccess = 0.7,
                          ingroupP = 0.8, # Should not be changed if running with network1000
-                         degration = 0.3,
+                         degration = 0.2,
                          premade_nw = F,
                          nw_df_list = 0,#network1000
-                         inGfav = 0.01
+                         inGfav = 0.00
                          )
 
 ```
@@ -573,7 +531,14 @@ ggplot(test_sim_results, aes(x = Round, y = Happiness)) +
 
 
 ggplot(a35, aes(x = Round, y = CoopWeight)) +
-  geom_point(aes(color = withinGroupInt))  
+  geom_point(aes(color = withinGroupInt)) 
+
+ggplot(test_sim_results, aes(x = Round)) +
+  geom_line(aes(y = InCoopMem),color=1) +
+  geom_line(aes(y = InDefMem),color=2) +
+  geom_line(aes(y = OutCoopMem),color=3) +
+  geom_line(aes(y = OutDefMem),color=4) +
+  facet_wrap(~ Actor)
 
 ```
 
