@@ -18,6 +18,7 @@ library(doSNOW)
 ```
 
 <h1>Functions</h1>
+
 ```{r Functions}
 ######################.
 ### CREATE NETWORK ###
@@ -509,6 +510,7 @@ simulation = function(name,nSim,nRounds,nGroup,nActor,nResource,rOffset,sdGather
 ```
 
 <h1>Run simulation</h1>
+
 ```{r Run sim}
 
 #make premade network
@@ -544,6 +546,7 @@ test_sim_results = simulation(name = "test_sim",
 
 
 <h1>PLOTS</h1>
+
 ```{r Plots}
 
 
