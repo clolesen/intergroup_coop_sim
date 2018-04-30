@@ -28,7 +28,7 @@ create_network = function(nGroup,nActor, rewireP){
   # generate network and convert to edge list
   network = net.rewired.caveman(nGroup, nActor, rewireP)
   elist = as.data.frame(to.edgelist(network))
-  
+  mb
   # Make columns for groups in the edge list
   elist$group1 = 0
   elist$group2 = 0
