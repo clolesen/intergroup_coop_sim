@@ -14,6 +14,7 @@ library(tidyverse)
 library(foreach)
 library(doParallel)
 library(doSNOW) 
+library(data.table)
 
 ```
 
@@ -456,6 +457,9 @@ simulation = function(name,nSim,nRounds,nGroup,nActor,nResource,rOffset,sdGather
         }
       }
       
+      #Update happiness after Degration
+      resource_df = calculate_happiness(resource_df,nResource,nGroup,nActor,meet_up_data, outCoopCost, inDefCost)
+      
       
       #____
       #OUTPUT DATA 
@@ -497,9 +501,9 @@ prior_test = data.frame()
 for (i in seq(from = 0.1, to = 1, by = 0.01)){
   sim = simulation(name = paste("prior test -",i),
                          nSim = 4,
-                         nRounds = 200, # Should not be changed above 1000 if running with network1000
+                         nRounds = 1000, # Should not be changed above 1000 if running with network1000
                          nGroup = 8, # Should not be changed if running with network1000
-                         nActor = 5, # Should not be changed if running with network1000
+                         nActor = 18, # Should not be changed if running with network1000
                          nResource = 4, # Must be a divisor of nGroup
                          rOffset = 0,
                          sdGather = 10,
@@ -510,8 +514,8 @@ for (i in seq(from = 0.1, to = 1, by = 0.01)){
                          nw_df_list = 0,#network1000
                          inGfav = 0.00,
                          priorMem = i,
-                         outCoopCost = 0.0, 
-                         inDefCost = 0.0
+                         outCoopCost = 0.4, 
+                         inDefCost = 0.2
                          )
   
   ic = sum(sim$InCoopMem <= 0)
@@ -531,14 +535,14 @@ ggplot(prior_test, aes(x = prior)) +
   geom_smooth(aes(y = OD), color = 4)
   
 
-test_sim_results2 = simulation(name = "test_sim",
-                         nSim = 2,
-                         nRounds = 100,
-                         nGroup = 12, 
+test_sim_results = simulation(name = "test_sim",
+                         nSim = 4,
+                         nRounds = 1000,
+                         nGroup = 8, 
                          nActor = 18, 
                          nResource = 4, # Must be a divisor of nGroup
                          rOffset = 0,
-                         sdGather = 10,
+                         sdGather = 0.25,
                          gatherSuccess = 1,
                          ingroupP = 0.8, # Should not be changed if running with network1000
                          degration = 0.25,
@@ -546,8 +550,8 @@ test_sim_results2 = simulation(name = "test_sim",
                          nw_df_list = 0,#network1000
                          inGfav = 0.00,
                          priorMem = 0.6,
-                         outCoopCost = 0.1, 
-                         inDefCost = 0.05
+                         outCoopCost = 0.4, 
+                         inDefCost = 0.2
                          )
 
 mem_data = data.frame(mem = c(test_sim_results$InCoopMem, test_sim_results$InDefMem, test_sim_results$OutCoopMem, test_sim_results$OutDefMem))
@@ -557,7 +561,7 @@ mem_data = data.frame(mem = c(test_sim_results$InCoopMem, test_sim_results$InDef
 ggplot(mem_data, aes(x = mem))+
   geom_density()
 
-ggplot(test_sim_results2) +
+ggplot(test_sim_results) +
   geom_density(aes(x = InCoopMem), color = "red")+
   geom_density(aes(x = InDefMem), color = "blue")+
   geom_density(aes(x = OutCoopMem), color = "black")+
@@ -572,16 +576,16 @@ sd(test_sim_results$InCoopMem)
 
 # Testing cost values
 cost_results = data.frame()
-for (i in seq(from = 0, to = 0.5, by = 0.1)){
+for (i in seq(from = 0, to = 0.5, by = 0.05)){
   
   test_cost = simulation(name = paste("We are at:",i),
                                  nSim = 4,
                                  nRounds = 500,
-                                 nGroup = 12, 
+                                 nGroup = 8, 
                                  nActor = 18, 
                                  nResource = 4, # Must be a divisor of nGroup
                                  rOffset = 0,
-                                 sdGather = 10,
+                                 sdGather = 0.25,
                                  gatherSuccess = 1,
                                  ingroupP = 0.5, # Should not be changed if running with network1000
                                  degration = 0.25,
@@ -614,10 +618,36 @@ ggplot(cost_results, aes(x = Round, y = InCoopMem)) +
 ggplot(cost_results, aes(x = Round, y = OutDefMem)) +
   geom_smooth(aes(color = as.factor(cost_results$cost)))
 
-ggplot(cost_results, aes(x = Round, y = CoopWeight)) +
-  geom_point(aes(color = as.factor(cost_results$cost))) +
+
+
+ggplot(subset(cost_results, cost=="0.4"), aes(x = Round, y = CoopWeight)) +
+  geom_point(
+    #aes(color = as.factor(cost_results$cost))
+    ) +
   facet_wrap(~ withinGroupInt)
 
+ggplot(subset(cost_results, cost==0.4), aes(x = Happiness))+
+  geom_density() +
+  geom_density(aes(x = cost_results$Happiness[which(cost_results$cost==0)]), color = "red")
+
+
+name = "test_sim"
+nSim = 2
+nRounds = 100
+nGroup = 8
+nActor = 18 
+nResource = 4 # Must be a divisor of nGroup
+rOffset = 0
+sdGather = 10
+gatherSuccess = 1
+ingroupP = 0.8 # Should not be changed if running with network1000
+degration = 0.25
+premade_nw = F
+nw_df_list = 0 #network1000
+inGfav = 0.00
+priorMem = 0.6
+outCoopCost = 0.4
+inDefCost = 0.2
 ```
 
 
@@ -641,15 +671,15 @@ registerDoSNOW(makeCluster(cores, type = "SOCK"))
 
 #Manipulation values
 ingroupP_list = c(0.6, 0.7, 0.8, 0.9)
-sdGather_list = c(0.25, 0.5, 0.75, 1)
+sdGather_list = c(0.25, 0.35, 0.45, 0.55)
 
 #RESET DATAFRAME
 data = data.frame()
 #Run simulation
 for (p in ingroupP_list){
   for (g in sdGather_list){
-    sim = simulation(paste("simulation  -  P:",p,"    G:",g),
-                     nSim = 100,
+    sim = simulation(paste("simulation3  -  P:",p,"    G:",g),
+                     nSim = 8,
                      nRounds = 1000, # Should not be changed above 1000 if running with network1000
                      nGroup = 8, # Should not be changed if running with network1000
                      nActor = 18, # Should not be changed if running with network1000
@@ -672,6 +702,26 @@ for (p in ingroupP_list){
     data = rbind(data,sim)
   }
 }
+
+
+#data 1 = 16 sim
+#data 2 = 16 sim
+#data 3  = 8 sim
+
+data$Simulation = data$Simulation + 300
+write.csv(data, file = "data3.csv")
+
+data1 = fread("data1.csv")
+data2 = fread("data2.csv")
+data3 = fread("data3.csv")
+
+data_full = rbind(data1,data2,data3)
+
+write.csv(data_full, file = "full_data.csv")
+
+
+
+
 ```
 
 
@@ -717,6 +767,23 @@ ggplot(test_sim_results1, aes(x = Round)) +
   geom_line(aes(y = OutCoopMem),color=3) +
   geom_line(aes(y = OutDefMem),color=4) +
   facet_wrap(~ Actor)
+
+
+
+
+sd25 = round(rnorm(1e5,mean = 0, sd = 0.25))
+sd50 = round(rnorm(1e5,mean = 0, sd = 0.5))
+sd75 = round(rnorm(1e5,mean = 0, sd = 0.75))
+sd1 = round(rnorm(1e5,mean = 0, sd = 1))
+
+sd30 = round(rnorm(1e5,mean = 0, sd = 0.55))
+
+length(sd25[sd25!=0&sd25%in%-1:1])/length(sd25)
+length(sd50[sd50!=0&sd50%in%-1:1])/length(sd50)
+length(sd75[sd75!=0&sd75%in%-1:1])/length(sd75)
+length(sd1[sd1!=0])/length(sd1)
+
+length(sd1[sd30!=0])/length(sd30)
 
 ```
 
